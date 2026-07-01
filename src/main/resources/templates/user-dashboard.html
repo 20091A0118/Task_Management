@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Dashboard - Taskly Space</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Navbar -->
+        <header class="navbar">
+            <div class="nav-brand">TASKLY HUB</div>
+            <div class="nav-user">
+                <span class="user-badge" id="usernameDisplay">User</span>
+                <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <section class="stats-grid">
+            <div class="stat-card blue">
+                <span class="stat-label">Assigned Tasks</span>
+                <span class="stat-value" id="statTotal">0</span>
+            </div>
+            <div class="stat-card amber">
+                <span class="stat-label">In Progress</span>
+                <span class="stat-value" id="statInProgress">0</span>
+            </div>
+            <div class="stat-card emerald">
+                <span class="stat-label">Pending Confirmation</span>
+                <span class="stat-value" id="statCompleted">0</span>
+            </div>
+            <div class="stat-card cyan">
+                <span class="stat-label">Confirmed Complete</span>
+                <span class="stat-value" id="statConfirmed">0</span>
+            </div>
+        </section>
+
+        <!-- Main Task List Container -->
+        <main class="glass-card" style="max-width: 100%; padding: 30px;">
+            <h2 class="panel-header">My Assigned Tasks</h2>
+            
+            <div id="dashboardAlert" class="alert"></div>
+
+            <div class="tasks-grid" id="tasksGrid">
+                <div class="no-tasks">Loading your assigned tasks tracker...</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Authentication guard
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('token');
+            const role = localStorage.getItem('role');
+            const username = localStorage.getItem('username');
+
+            if (!token || role !== 'ROLE_USER') {
+                localStorage.clear();
+                window.location.href = '/login';
+                return;
+            }
+
+            document.getElementById('usernameDisplay').textContent = username;
+            
+            // Initial data pull
+            loadUserTasks();
+        });
+
+        function handleLogout() {
+            localStorage.clear();
+            window.location.href = '/login';
+        }
+
+        async function loadUserTasks() {
+            try {
+                const response = await fetch('/api/user/tasks', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    const tasks = await response.json();
+                    renderStats(tasks);
+                    renderTasksCards(tasks);
+                } else if (response.status === 401 || response.status === 403) {
+                    handleLogout();
+                }
+            } catch (error) {
+                console.error('Error fetching user tasks:', error);
+            }
+        }
+
+        function renderStats(tasks) {
+            const total = tasks.length;
+            const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+            const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+            const confirmed = tasks.filter(t => t.status === 'CONFIRMED').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statInProgress').textContent = inProgress;
+            document.getElementById('statCompleted').textContent = completed;
+            document.getElementById('statConfirmed').textContent = confirmed;
+        }
+
+        function renderTasksCards(tasks) {
+            const grid = document.getElementById('tasksGrid');
+            grid.innerHTML = '';
+
+            if (tasks.length === 0) {
+                grid.innerHTML = `<div class="no-tasks">You don't have any tasks assigned yet. Good job!</div>`;
+                return;
+            }
+
+            tasks.forEach(task => {
+                const card = document.createElement('div');
+                card.className = 'task-card';
+
+                // Format Created Date
+                const date = new Date(task.createdAt);
+                const dateStr = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+                // Format Due Date
+                let dueDateStr = 'No deadline';
+                let isOverdue = false;
+                if (task.dueDate) {
+                    const dueDate = new Date(task.dueDate);
+                    dueDateStr = dueDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    
+                    // Check if overdue (only if task status is not COMPLETED or CONFIRMED)
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    dueDate.setHours(0,0,0,0);
+                    if (dueDate < today && task.status !== 'COMPLETED' && task.status !== 'CONFIRMED') {
+                        isOverdue = true;
+                    }
+                }
+
+                // Render status indicator or interactive select
+                let actionHtml = '';
+                const isLocked = task.status === 'COMPLETED' || task.status === 'CONFIRMED';
+
+                if (isLocked) {
+                    // Frozen states (Awaiting admin approval or verified completed)
+                    actionHtml = `<span class="badge badge-${task.status.toLowerCase()}">${task.status.replace('_', ' ')}</span>`;
+                } else {
+                    // Active states (Pending/In Progress) - display interactive selector dropdown
+                    actionHtml = `
+                        <select class="status-select" onchange="updateStatus(${task.id}, this.value)">
+                            <option value="PENDING" ${task.status === 'PENDING' ? 'selected' : ''}>Pending</option>
+                            <option value="IN_PROGRESS" ${task.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
+                            <option value="COMPLETED" ${task.status === 'COMPLETED' ? 'selected' : ''}>Mark Completed</option>
+                        </select>
+                    `;
+                }
+
+                // Append status badge indicator on the top right
+                let topBadgeClass = task.status.toLowerCase();
+                let statusLabel = task.status.replace('_', ' ');
+                if (task.status === 'COMPLETED') statusLabel = 'Awaiting Confirm';
+
+                card.innerHTML = `
+                    <div class="task-card-header">
+                        <h3 class="task-card-title">${escapeHtml(task.title)}</h3>
+                        <span class="badge badge-${topBadgeClass}">${statusLabel}</span>
+                    </div>
+                    <p class="task-card-desc">${escapeHtml(task.description || 'No additional details provided.')}</p>
+                    <div style="font-size: 0.85rem; margin-top: 8px; color: ${isOverdue ? 'var(--accent-rose)' : 'var(--text-secondary)'}; font-weight: ${isOverdue ? '600' : '400'}; display: flex; align-items: center; gap: 5px;">
+                        <span>Deadline: ${dueDateStr}</span>
+                        ${isOverdue ? '<span style="font-size: 0.70rem; text-transform: uppercase; background: rgba(244, 63, 94, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(244, 63, 94, 0.3);">Overdue</span>' : ''}
+                    </div>
+                    <div class="task-card-footer">
+                        <span class="task-date">Assigned: ${dateStr}</span>
+                        <div>${actionHtml}</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        async function updateStatus(taskId, newStatus) {
+            const dashboardAlert = document.getElementById('dashboardAlert');
+            dashboardAlert.style.display = 'none';
+            dashboardAlert.className = 'alert';
+
+            try {
+                const response = await fetch(`/api/user/tasks/${taskId}/status?status=${newStatus}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    if (newStatus === 'COMPLETED') {
+                        dashboardAlert.textContent = 'Task marked as completed! Awaiting admin confirmation.';
+                        dashboardAlert.classList.add('alert-success');
+                        dashboardAlert.style.display = 'flex';
+                    }
+                    loadUserTasks();
+                } else {
+                    const msg = await response.text();
+                    dashboardAlert.textContent = msg || 'Failed to update task status.';
+                    dashboardAlert.classList.add('alert-danger');
+                    dashboardAlert.style.display = 'flex';
+                }
+            } catch (error) {
+                dashboardAlert.textContent = 'Connection error updating status.';
+                dashboardAlert.classList.add('alert-danger');
+                dashboardAlert.style.display = 'flex';
+                console.error('Update status error:', error);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

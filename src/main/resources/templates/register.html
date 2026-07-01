@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Taskly Space</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+</head>
+<body>
+    <div class="auth-wrapper">
+        <div class="glass-card">
+            <h1 class="brand-title">CREATE ACCOUNT</h1>
+            <p class="brand-subtitle">Join us to organize and track your team tasks</p>
+            
+            <div id="alertBox" class="alert"></div>
+            
+            <form id="registerForm" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" id="username" class="form-control" placeholder="e.g. fayaz" required minlength="3" maxlength="50" autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" class="form-control" placeholder="At least 6 characters" required minlength="6" autocomplete="new-password">
+                </div>
+                
+                <div class="form-group">
+                    <label for="role" class="form-label">Select Account Role</label>
+                    <select id="role" class="form-control" required>
+                        <option value="USER" selected>Standard User</option>
+                        <option value="ADMIN">Administrator</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="registerBtn">
+                    Create Account
+                </button>
+            </form>
+            
+            <div class="auth-footer">
+                Already have an account? <a href="/login">Sign in here</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function handleRegister(event) {
+            event.preventDefault();
+            
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const roleSelect = document.getElementById('role');
+            const registerBtn = document.getElementById('registerBtn');
+            const alertBox = document.getElementById('alertBox');
+            
+            // UI Loading state
+            registerBtn.disabled = true;
+            registerBtn.textContent = 'Registering account...';
+            alertBox.style.display = 'none';
+            alertBox.className = 'alert';
+            
+            const payload = {
+                username: usernameInput.value.trim(),
+                password: passwordInput.value,
+                role: roleSelect.value
+            };
+            
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    alertBox.textContent = 'Registration successful! Redirecting to login...';
+                    alertBox.classList.add('alert-success');
+                    alertBox.style.display = 'flex';
+                    
+                    // Redirect to login after 1.5 seconds
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 1500);
+                } else {
+                    const errMsg = await response.text();
+                    showError(errMsg || 'Registration failed. Username might be taken.');
+                }
+            } catch (error) {
+                showError('Network error. Please try again later.');
+                console.error('Registration error:', error);
+            } finally {
+                if (!alertBox.classList.contains('alert-success')) {
+                    registerBtn.disabled = false;
+                    registerBtn.textContent = 'Create Account';
+                }
+            }
+        }
+
+        function showError(message) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.textContent = message;
+            alertBox.classList.add('alert-danger');
+            alertBox.style.display = 'flex';
+        }
+    </script>
+</body>
+</html>

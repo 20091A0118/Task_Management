@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Taskly Space</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Navbar -->
+        <header class="navbar">
+            <div class="nav-brand">TASKLY ADMIN</div>
+            <div class="nav-user">
+                <span class="user-badge" id="usernameDisplay">Admin</span>
+                <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <section class="stats-grid">
+            <div class="stat-card blue">
+                <span class="stat-label">Total Assigned Tasks</span>
+                <span class="stat-value" id="statTotal">0</span>
+            </div>
+            <div class="stat-card amber">
+                <span class="stat-label">Pending / In Progress</span>
+                <span class="stat-value" id="statActive">0</span>
+            </div>
+            <div class="stat-card emerald">
+                <span class="stat-label">Awaiting Confirmation</span>
+                <span class="stat-value" id="statCompleted">0</span>
+            </div>
+            <div class="stat-card cyan">
+                <span class="stat-label">Confirmed Complete</span>
+                <span class="stat-value" id="statConfirmed">0</span>
+            </div>
+        </section>
+
+        <!-- Dashboard Grid Split -->
+        <main class="dashboard-grid">
+            <!-- Left Panel: Create Task Form -->
+            <section class="glass-card" style="max-width: 100%; height: fit-content; padding: 30px;">
+                <h2 class="panel-header">Create New Task</h2>
+                
+                <div id="formAlert" class="alert"></div>
+
+                <form id="createTaskForm" onsubmit="handleCreateTask(event)">
+                    <div class="form-group">
+                        <label for="taskTitle" class="form-label">Task Title</label>
+                        <input type="text" id="taskTitle" class="form-control" placeholder="Describe the outcome..." required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskDesc" class="form-label">Description</label>
+                        <textarea id="taskDesc" class="form-control" rows="3" placeholder="Provide task context and details..."></textarea>
+                    </div>
+
+                    <div class="form-group autocomplete-container">
+                        <label for="userSearch" class="form-label">Assign To User (Type to search)</label>
+                        <input type="text" id="userSearch" class="form-control" placeholder="Search by username..." autocomplete="off" required>
+                        <input type="hidden" id="assignedUserId">
+                        
+                        <!-- Suggestions Dropdown -->
+                        <div id="suggestionsBox" class="suggestions-box"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="dueDate" class="form-label">Deadline / Due Date</label>
+                        <input type="date" id="dueDate" class="form-control" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="submitTaskBtn">
+                        Assign Task
+                    </button>
+                </form>
+            </section>
+
+            <!-- Right Panel: Tasks Management List -->
+            <section class="glass-card" style="max-width: 100%; padding: 30px;">
+                <h2 class="panel-header">System Task Tracker</h2>
+                
+                <div class="table-container">
+                    <table class="task-table" id="taskTable">
+                        <thead>
+                            <tr>
+                                <th>Task Detail</th>
+                                <th>Assigned To</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Deadline</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taskTableBody">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: var(--text-secondary);">Loading tasks tracker data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Authentication guard
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('token');
+            const role = localStorage.getItem('role');
+            const username = localStorage.getItem('username');
+
+            if (!token || role !== 'ROLE_ADMIN') {
+                localStorage.clear();
+                window.location.href = '/login';
+                return;
+            }
+
+            document.getElementById('usernameDisplay').textContent = `${username} (Admin)`;
+            
+            // Initial data pull
+            loadDashboardData();
+            setupAutocomplete();
+        });
+
+        function handleLogout() {
+            localStorage.clear();
+            window.location.href = '/login';
+        }
+
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/admin/tasks', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    const tasks = await response.json();
+                    renderStats(tasks);
+                    renderTasksTable(tasks);
+                } else if (response.status === 401 || response.status === 403) {
+                    handleLogout();
+                }
+            } catch (error) {
+                console.error('Error fetching admin dashboard tasks:', error);
+            }
+        }
+
+        function renderStats(tasks) {
+            const total = tasks.length;
+            const active = tasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length;
+            const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+            const confirmed = tasks.filter(t => t.status === 'CONFIRMED').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statActive').textContent = active;
+            document.getElementById('statCompleted').textContent = completed;
+            document.getElementById('statConfirmed').textContent = confirmed;
+        }
+
+        function renderTasksTable(tasks) {
+            const tbody = document.getElementById('taskTableBody');
+            tbody.innerHTML = '';
+
+            if (tasks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 40px 20px;">No tasks created in the system. Assign a task using the form.</td></tr>`;
+                return;
+            }
+
+            tasks.forEach(task => {
+                const tr = document.createElement('tr');
+                
+                // Format Created Date
+                const date = new Date(task.createdAt);
+                const dateStr = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+                // Format Due Date
+                let dueDateStr = 'No deadline';
+                if (task.dueDate) {
+                    const dueDate = new Date(task.dueDate);
+                    dueDateStr = dueDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                }
+
+                // Action Column
+                let actionHtml = '-';
+                if (task.status === 'COMPLETED') {
+                    actionHtml = `<button class="btn btn-emerald btn-sm" onclick="confirmTaskCompletion(${task.id})">Confirm</button>`;
+                }
+
+                tr.innerHTML = `
+                    <td>
+                        <div class="task-title">${escapeHtml(task.title)}</div>
+                        <div class="task-desc">${escapeHtml(task.description || 'No description provided')}</div>
+                    </td>
+                    <td><span style="font-weight: 500;">${escapeHtml(task.assignedUsername)}</span></td>
+                    <td><span class="badge badge-${task.status.toLowerCase()}">${task.status.replace('_', ' ')}</span></td>
+                    <td class="task-date">${dateStr}</td>
+                    <td class="task-date" style="font-weight: 500; color: var(--accent-cyan);">${dueDateStr}</td>
+                    <td>${actionHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function confirmTaskCompletion(taskId) {
+            try {
+                const response = await fetch(`/api/admin/tasks/${taskId}/confirm`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    loadDashboardData();
+                } else {
+                    alert('Failed to confirm task completion.');
+                }
+            } catch (error) {
+                console.error('Error confirming completion:', error);
+            }
+        }
+
+        function setupAutocomplete() {
+            const userSearchInput = document.getElementById('userSearch');
+            const assignedUserIdInput = document.getElementById('assignedUserId');
+            const suggestionsBox = document.getElementById('suggestionsBox');
+
+            userSearchInput.addEventListener('input', debounce(async (e) => {
+                const val = e.target.value.trim();
+                assignedUserIdInput.value = ''; // Reset ID since text changed
+                
+                if (val.length < 1) {
+                    suggestionsBox.style.display = 'none';
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/admin/users/search?query=${encodeURIComponent(val)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('token')}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const users = await response.json();
+                        renderSuggestions(users);
+                    }
+                } catch (error) {
+                    console.error('Error fetching suggestions:', error);
+                }
+            }, 200));
+
+            function renderSuggestions(users) {
+                suggestionsBox.innerHTML = '';
+                if (users.length === 0) {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item no-results';
+                    div.textContent = 'No matching users found';
+                    suggestionsBox.appendChild(div);
+                } else {
+                    users.forEach(user => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.textContent = user.username;
+                        div.addEventListener('click', () => {
+                            userSearchInput.value = user.username;
+                            assignedUserIdInput.value = user.id;
+                            suggestionsBox.style.display = 'none';
+                        });
+                        suggestionsBox.appendChild(div);
+                    });
+                }
+                suggestionsBox.style.display = 'block';
+            }
+
+            // Close suggestions when user clicks outside
+            document.addEventListener('click', (e) => {
+                if (e.target !== userSearchInput && e.target !== suggestionsBox) {
+                    suggestionsBox.style.display = 'none';
+                }
+            });
+        }
+
+        async function handleCreateTask(event) {
+            event.preventDefault();
+            
+            const taskTitleInput = document.getElementById('taskTitle');
+            const taskDescInput = document.getElementById('taskDesc');
+            const userSearchInput = document.getElementById('userSearch');
+            const assignedUserIdInput = document.getElementById('assignedUserId');
+            const dueDateInput = document.getElementById('dueDate');
+            const formAlert = document.getElementById('formAlert');
+            const submitBtn = document.getElementById('submitTaskBtn');
+
+            formAlert.style.display = 'none';
+            formAlert.className = 'alert';
+
+            // Validation check
+            if (!assignedUserIdInput.value) {
+                formAlert.textContent = 'Please select a valid user from the autocomplete dropdown list.';
+                formAlert.classList.add('alert-danger');
+                formAlert.style.display = 'flex';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Assigning...';
+
+            const payload = {
+                title: taskTitleInput.value.trim(),
+                description: taskDescInput.value.trim(),
+                assignedUserId: parseInt(assignedUserIdInput.value),
+                dueDate: dueDateInput.value || null
+            };
+
+            try {
+                const response = await fetch('/api/admin/tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    formAlert.textContent = 'Task successfully assigned to user!';
+                    formAlert.classList.add('alert-success');
+                    formAlert.style.display = 'flex';
+                    
+                    // Reset fields
+                    taskTitleInput.value = '';
+                    taskDescInput.value = '';
+                    userSearchInput.value = '';
+                    assignedUserIdInput.value = '';
+                    dueDateInput.value = '';
+
+                    // Reload dashboard data
+                    loadDashboardData();
+                } else {
+                    const msg = await response.text();
+                    formAlert.textContent = msg || 'Failed to create task.';
+                    formAlert.classList.add('alert-danger');
+                    formAlert.style.display = 'flex';
+                }
+            } catch (error) {
+                formAlert.textContent = 'Connection error. Please try again.';
+                formAlert.classList.add('alert-danger');
+                formAlert.style.display = 'flex';
+                console.error(error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Assign Task';
+            }
+        }
+
+        // Helper functions
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
