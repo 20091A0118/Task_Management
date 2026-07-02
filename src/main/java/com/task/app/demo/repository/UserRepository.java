@@ -14,5 +14,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // Search users by matching username prefix/part and role USER (to assign tasks to normal users)
     List<User> findByUsernameContainingIgnoreCaseAndRole(String username, Role role);
 
+    List<User> findByCreatedBy(User admin);
+
+    List<User> findByUsernameContainingIgnoreCaseAndRoleAndCreatedBy(String username, Role role, User admin);
+
+    List<User> findByRole(Role role);
+
     boolean existsByUsername(String username);
 }

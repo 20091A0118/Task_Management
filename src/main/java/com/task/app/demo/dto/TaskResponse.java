@@ -13,10 +13,11 @@ public class TaskResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDate dueDate;
+    private String createdByUsername;
 
     public TaskResponse() {}
 
-    public TaskResponse(Long id, String title, String description, String status, Long assignedUserId, String assignedUsername, LocalDateTime createdAt, LocalDateTime updatedAt, LocalDate dueDate) {
+    public TaskResponse(Long id, String title, String description, String status, Long assignedUserId, String assignedUsername, LocalDateTime createdAt, LocalDateTime updatedAt, LocalDate dueDate, String createdByUsername) {
         this.id = id;
         this.title = title;
         this.description = description;
@@ -26,6 +27,7 @@ public class TaskResponse {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.dueDate = dueDate;
+        this.createdByUsername = createdByUsername;
     }
 
     public Long getId() {
@@ -98,5 +100,13 @@ public class TaskResponse {
 
     public void setDueDate(LocalDate dueDate) {
         this.dueDate = dueDate;
+    }
+
+    public String getCreatedByUsername() {
+        return createdByUsername;
+    }
+
+    public void setCreatedByUsername(String createdByUsername) {
+        this.createdByUsername = createdByUsername;
     }
 }

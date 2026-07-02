@@ -5,6 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Taskly Space</title>
     <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <style>
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(6, 4, 13, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.25s ease-out;
+        }
+        .modal-content {
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tabs-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            background: rgba(25, 20, 50, 0.2);
+            padding: 5px;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            width: fit-content;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px 24px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: var(--transition);
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .tab-btn.active {
+            color: #ffffff;
+            background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
@@ -94,16 +151,60 @@
                         </thead>
                         <tbody id="taskTableBody">
                             <tr>
-                                <td colspan="5" style="text-align: center; color: var(--text-secondary);">Loading tasks tracker data...</td>
+                                <td colspan="6" style="text-align: center; color: var(--text-secondary);">Loading tasks tracker data...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </section>
         </main>
+
+        <!-- Edit Task Modal -->
+        <div id="editTaskModal" class="modal-overlay" style="display: none;">
+            <div class="glass-card modal-content" style="max-width: 500px; padding: 30px; margin: 20px;">
+                <h2 class="panel-header" style="justify-content: space-between; display: flex;">
+                    <span>Edit Task</span>
+                    <span class="close-modal-btn" onclick="closeEditTaskModal()" style="cursor: pointer; color: var(--text-secondary);">&times;</span>
+                </h2>
+                
+                <div id="editFormAlert" class="alert"></div>
+
+                <form id="editTaskForm" onsubmit="handleUpdateTask(event)">
+                    <input type="hidden" id="editTaskId">
+                    
+                    <div class="form-group">
+                        <label for="editTaskTitle" class="form-label">Task Title</label>
+                        <input type="text" id="editTaskTitle" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTaskDesc" class="form-label">Description</label>
+                        <textarea id="editTaskDesc" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="form-group autocomplete-container">
+                        <label for="editUserSearch" class="form-label">Assign To User (Type to search)</label>
+                        <input type="text" id="editUserSearch" class="form-control" autocomplete="off" required>
+                        <input type="hidden" id="editAssignedUserId">
+                        <div id="editSuggestionsBox" class="suggestions-box"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editDueDate" class="form-label">Deadline / Due Date</label>
+                        <input type="date" id="editDueDate" class="form-control" required>
+                    </div>
+
+                    <div style="display: flex; gap: 15px; margin-top: 25px;">
+                        <button type="submit" class="btn btn-primary" id="updateTaskBtn" style="flex: 1;">Save Changes</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeEditTaskModal()" style="flex: 1;">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script>
+
         // Authentication guard
         document.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('token');
@@ -184,10 +285,14 @@
                 }
 
                 // Action Column
-                let actionHtml = '-';
+                let actionHtml = `<div style="display: flex; gap: 8px;">`;
                 if (task.status === 'COMPLETED') {
-                    actionHtml = `<button class="btn btn-emerald btn-sm" onclick="confirmTaskCompletion(${task.id})">Confirm</button>`;
+                    actionHtml += `<button class="btn btn-emerald btn-sm" onclick="confirmTaskCompletion(${task.id})">Confirm</button>`;
                 }
+                actionHtml += `
+                    <button class="btn btn-secondary btn-sm" style="padding: 6px 10px; background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.3); color: var(--accent-indigo);" onclick="openEditTaskModal(${task.id}, '${escapeHtml(task.title)}', '${escapeHtml(task.description)}', ${task.assignedUserId}, '${escapeHtml(task.assignedUsername)}', '${task.dueDate || ''}')">Edit</button>
+                    <button class="btn btn-sm" style="padding: 6px 10px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: var(--accent-rose);" onclick="handleDeleteTask(${task.id})">Delete</button>
+                </div>`;
 
                 tr.innerHTML = `
                     <td>
@@ -223,14 +328,109 @@
             }
         }
 
+        function openEditTaskModal(id, title, desc, assignedUserId, assignedUsername, dueDate) {
+            document.getElementById('editTaskId').value = id;
+            document.getElementById('editTaskTitle').value = title;
+            document.getElementById('editTaskDesc').value = desc || '';
+            document.getElementById('editAssignedUserId').value = assignedUserId;
+            document.getElementById('editUserSearch').value = assignedUsername;
+            document.getElementById('editDueDate').value = dueDate ? dueDate.substring(0, 10) : '';
+            document.getElementById('editFormAlert').style.display = 'none';
+            document.getElementById('editTaskModal').style.display = 'flex';
+        }
+
+        function closeEditTaskModal() {
+            document.getElementById('editTaskModal').style.display = 'none';
+        }
+
+        async function handleUpdateTask(event) {
+            event.preventDefault();
+            const id = document.getElementById('editTaskId').value;
+            const title = document.getElementById('editTaskTitle').value.trim();
+            const description = document.getElementById('editTaskDesc').value.trim();
+            const assignedUserId = document.getElementById('editAssignedUserId').value;
+            const dueDate = document.getElementById('editDueDate').value || null;
+            const alertBox = document.getElementById('editFormAlert');
+            const submitBtn = document.getElementById('updateTaskBtn');
+
+            alertBox.style.display = 'none';
+            if (!assignedUserId) {
+                alertBox.textContent = 'Please select a valid user.';
+                alertBox.className = 'alert alert-danger';
+                alertBox.style.display = 'flex';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            try {
+                const response = await fetch(`/api/admin/tasks/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify({ title, description, assignedUserId: parseInt(assignedUserId), dueDate })
+                });
+
+                if (response.ok) {
+                    closeEditTaskModal();
+                    loadDashboardData();
+                } else {
+                    const msg = await response.text();
+                    alertBox.textContent = msg || 'Failed to update task.';
+                    alertBox.className = 'alert alert-danger';
+                    alertBox.style.display = 'flex';
+                }
+            } catch (error) {
+                alertBox.textContent = 'Network error.';
+                alertBox.className = 'alert alert-danger';
+                alertBox.style.display = 'flex';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        async function handleDeleteTask(taskId) {
+            if (!confirm('Are you sure you want to delete this task?')) return;
+            try {
+                const response = await fetch(`/api/admin/tasks/${taskId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    loadDashboardData();
+                } else {
+                    alert('Failed to delete task.');
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+
         function setupAutocomplete() {
+            // Task creation autocomplete
             const userSearchInput = document.getElementById('userSearch');
             const assignedUserIdInput = document.getElementById('assignedUserId');
             const suggestionsBox = document.getElementById('suggestionsBox');
 
-            userSearchInput.addEventListener('input', debounce(async (e) => {
+            setupAutocompleteField(userSearchInput, assignedUserIdInput, suggestionsBox);
+
+            // Task edit autocomplete
+            const editUserSearchInput = document.getElementById('editUserSearch');
+            const editAssignedUserIdInput = document.getElementById('editAssignedUserId');
+            const editSuggestionsBox = document.getElementById('editSuggestionsBox');
+
+            setupAutocompleteField(editUserSearchInput, editAssignedUserIdInput, editSuggestionsBox);
+        }
+
+        function setupAutocompleteField(input, hiddenInput, suggestionsBox) {
+            input.addEventListener('input', debounce(async (e) => {
                 const val = e.target.value.trim();
-                assignedUserIdInput.value = ''; // Reset ID since text changed
+                hiddenInput.value = ''; // Reset ID
                 
                 if (val.length < 1) {
                     suggestionsBox.style.display = 'none';
@@ -246,39 +446,35 @@
 
                     if (response.ok) {
                         const users = await response.json();
-                        renderSuggestions(users);
+                        suggestionsBox.innerHTML = '';
+                        if (users.length === 0) {
+                            const div = document.createElement('div');
+                            div.className = 'suggestion-item no-results';
+                            div.textContent = 'No matching users found';
+                            suggestionsBox.appendChild(div);
+                        } else {
+                            users.forEach(user => {
+                                const div = document.createElement('div');
+                                div.className = 'suggestion-item';
+                                div.textContent = user.username;
+                                div.addEventListener('click', () => {
+                                    input.value = user.username;
+                                    hiddenInput.value = user.id;
+                                    suggestionsBox.style.display = 'none';
+                                });
+                                suggestionsBox.appendChild(div);
+                            });
+                        }
+                        suggestionsBox.style.display = 'block';
                     }
                 } catch (error) {
                     console.error('Error fetching suggestions:', error);
                 }
             }, 200));
 
-            function renderSuggestions(users) {
-                suggestionsBox.innerHTML = '';
-                if (users.length === 0) {
-                    const div = document.createElement('div');
-                    div.className = 'suggestion-item no-results';
-                    div.textContent = 'No matching users found';
-                    suggestionsBox.appendChild(div);
-                } else {
-                    users.forEach(user => {
-                        const div = document.createElement('div');
-                        div.className = 'suggestion-item';
-                        div.textContent = user.username;
-                        div.addEventListener('click', () => {
-                            userSearchInput.value = user.username;
-                            assignedUserIdInput.value = user.id;
-                            suggestionsBox.style.display = 'none';
-                        });
-                        suggestionsBox.appendChild(div);
-                    });
-                }
-                suggestionsBox.style.display = 'block';
-            }
-
-            // Close suggestions when user clicks outside
+            // Close suggestions when click outside
             document.addEventListener('click', (e) => {
-                if (e.target !== userSearchInput && e.target !== suggestionsBox) {
+                if (e.target !== input && e.target !== suggestionsBox) {
                     suggestionsBox.style.display = 'none';
                 }
             });
@@ -298,7 +494,6 @@
             formAlert.style.display = 'none';
             formAlert.className = 'alert';
 
-            // Validation check
             if (!assignedUserIdInput.value) {
                 formAlert.textContent = 'Please select a valid user from the autocomplete dropdown list.';
                 formAlert.classList.add('alert-danger');
@@ -331,14 +526,12 @@
                     formAlert.classList.add('alert-success');
                     formAlert.style.display = 'flex';
                     
-                    // Reset fields
                     taskTitleInput.value = '';
                     taskDescInput.value = '';
                     userSearchInput.value = '';
                     assignedUserIdInput.value = '';
                     dueDateInput.value = '';
 
-                    // Reload dashboard data
                     loadDashboardData();
                 } else {
                     const msg = await response.text();

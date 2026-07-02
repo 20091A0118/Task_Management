@@ -10,4 +10,6 @@ import java.util.List;
 public interface TaskRepository extends JpaRepository<Task, Long> {
     List<Task> findByAssignedUserOrderByCreatedAtDesc(User user);
     List<Task> findAllByOrderByCreatedAtDesc();
+    List<Task> findByCreatedByOrderByCreatedAtDesc(User admin);
+    void deleteByAssignedUser(User user);
 }

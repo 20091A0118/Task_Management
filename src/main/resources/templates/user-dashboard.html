@@ -171,6 +171,9 @@
                         <span>Deadline: ${dueDateStr}</span>
                         ${isOverdue ? '<span style="font-size: 0.70rem; text-transform: uppercase; background: rgba(244, 63, 94, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(244, 63, 94, 0.3);">Overdue</span>' : ''}
                     </div>
+                    <div style="font-size: 0.85rem; margin-top: 4px; color: var(--text-secondary); display: flex; align-items: center; gap: 5px;">
+                        <span>Assigned By: <strong style="color: var(--accent-indigo);">${escapeHtml(task.createdByUsername || 'System')}</strong></span>
+                    </div>
                     <div class="task-card-footer">
                         <span class="task-date">Assigned: ${dateStr}</span>
                         <div>${actionHtml}</div>

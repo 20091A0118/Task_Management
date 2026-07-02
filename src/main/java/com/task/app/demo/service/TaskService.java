@@ -26,7 +26,7 @@ public class TaskService {
     }
 
     @Transactional
-    public TaskResponse createTask(TaskRequest request) {
+    public TaskResponse createTask(TaskRequest request, User admin) {
         User assignedUser = userRepository.findById(request.getAssignedUserId())
                 .orElseThrow(() -> new IllegalArgumentException("Assigned user not found"));
 
@@ -37,6 +37,7 @@ public class TaskService {
                 assignedUser,
                 request.getDueDate()
         );
+        task.setCreatedBy(admin);
 
         Task savedTask = taskRepository.save(task);
         return mapToResponse(savedTask);
@@ -45,6 +46,14 @@ public class TaskService {
     @Transactional(readOnly = true)
     public List<TaskResponse> getAllTasks() {
         return taskRepository.findAllByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaskResponse> getTasksByAdmin(User admin) {
+        return taskRepository.findByCreatedByOrderByCreatedAtDesc(admin)
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -60,17 +69,54 @@ public class TaskService {
     }
 
     @Transactional
+    public TaskResponse updateTask(Long taskId, TaskRequest request, User admin) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("Task not found"));
+
+        if (task.getCreatedBy() == null || !task.getCreatedBy().getId().equals(admin.getId())) {
+            throw new SecurityException("Unauthorized to modify this task");
+        }
+
+        User assignedUser = userRepository.findById(request.getAssignedUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Assigned user not found"));
+
+        task.setTitle(request.getTitle());
+        task.setDescription(request.getDescription());
+        task.setAssignedUser(assignedUser);
+        task.setDueDate(request.getDueDate());
+
+        Task updatedTask = taskRepository.save(task);
+        return mapToResponse(updatedTask);
+    }
+
+    @Transactional
+    public void deleteTask(Long taskId, User admin) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("Task not found"));
+
+        if (task.getCreatedBy() == null || !task.getCreatedBy().getId().equals(admin.getId())) {
+            throw new SecurityException("Unauthorized to delete this task");
+        }
+
+        taskRepository.delete(task);
+    }
+
+    @Transactional
     public TaskResponse updateTaskStatus(Long taskId, String statusStr) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("Task not found"));
 
         User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        // Standard user can only update tasks assigned to them. Admin can update any.
+        // Standard user can only update tasks assigned to them. Admin can update any task they created.
         boolean isAdmin = currentUser.getRole().name().equals("ROLE_ADMIN");
         boolean isAssignedUser = task.getAssignedUser().getId().equals(currentUser.getId());
 
-        if (!isAdmin && !isAssignedUser) {
+        if (isAdmin) {
+            if (task.getCreatedBy() == null || !task.getCreatedBy().getId().equals(currentUser.getId())) {
+                throw new SecurityException("Unauthorized to modify this task");
+            }
+        } else if (!isAssignedUser) {
             throw new SecurityException("Unauthorized to modify this task");
         }
 
@@ -101,6 +147,12 @@ public class TaskService {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("Task not found"));
 
+        User currentUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        if (task.getCreatedBy() == null || !task.getCreatedBy().getId().equals(currentUser.getId())) {
+            throw new SecurityException("Unauthorized to confirm this task");
+        }
+
         if (task.getStatus() != TaskStatus.COMPLETED) {
             throw new IllegalStateException("Only completed tasks can be confirmed");
         }
@@ -120,7 +172,8 @@ public class TaskService {
                 task.getAssignedUser().getUsername(),
                 task.getCreatedAt(),
                 task.getUpdatedAt(),
-                task.getDueDate()
+                task.getDueDate(),
+                task.getCreatedBy() != null ? task.getCreatedBy().getUsername() : "System"
         );
     }
 }

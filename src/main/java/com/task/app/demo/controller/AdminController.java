@@ -3,11 +3,14 @@ package com.task.app.demo.controller;
 import com.task.app.demo.dto.TaskRequest;
 import com.task.app.demo.dto.TaskResponse;
 import com.task.app.demo.dto.UserResponse;
+import com.task.app.demo.dto.RegisterRequest;
+import com.task.app.demo.entity.User;
 import com.task.app.demo.service.TaskService;
 import com.task.app.demo.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 
@@ -35,16 +38,40 @@ public class AdminController {
     @PostMapping("/tasks")
     public ResponseEntity<?> createTask(@Valid @RequestBody TaskRequest request) {
         try {
-            TaskResponse task = taskService.createTask(request);
+            User currentAdmin = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            TaskResponse task = taskService.createTask(request, currentAdmin);
             return ResponseEntity.ok(task);
-        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
     @GetMapping("/tasks")
     public ResponseEntity<List<TaskResponse>> getAllTasks() {
-        return ResponseEntity.ok(taskService.getAllTasks());
+        User currentAdmin = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return ResponseEntity.ok(taskService.getTasksByAdmin(currentAdmin));
+    }
+
+    @PutMapping("/tasks/{id}")
+    public ResponseEntity<?> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
+        try {
+            User currentAdmin = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            TaskResponse task = taskService.updateTask(id, request, currentAdmin);
+            return ResponseEntity.ok(task);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/tasks/{id}")
+    public ResponseEntity<?> deleteTask(@PathVariable Long id) {
+        try {
+            User currentAdmin = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            taskService.deleteTask(id, currentAdmin);
+            return ResponseEntity.ok("Task deleted successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @PutMapping("/tasks/{id}/confirm")
@@ -56,4 +83,5 @@ public class AdminController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
 }

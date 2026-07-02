@@ -3,10 +3,12 @@ package com.task.app.demo.controller;
 import com.task.app.demo.dto.AuthRequest;
 import com.task.app.demo.dto.AuthResponse;
 import com.task.app.demo.dto.RegisterRequest;
+import com.task.app.demo.dto.UserResponse;
 import com.task.app.demo.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -36,5 +38,10 @@ public class AuthController {
         } catch (Exception e) {
             return ResponseEntity.status(401).body("Invalid username or password");
         }
+    }
+
+    @GetMapping("/admins")
+    public ResponseEntity<List<UserResponse>> getAdmins() {
+        return ResponseEntity.ok(authService.getAdmins());
     }
 }

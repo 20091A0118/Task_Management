@@ -1,8 +1,12 @@
 package com.task.app.demo.service;
 
+import com.task.app.demo.dto.RegisterRequest;
 import com.task.app.demo.dto.UserResponse;
 import com.task.app.demo.entity.Role;
+import com.task.app.demo.entity.User;
 import com.task.app.demo.repository.UserRepository;
+import com.task.app.demo.repository.TaskRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -12,9 +16,13 @@ import java.util.stream.Collectors;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final TaskRepository taskRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, TaskRepository taskRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional(readOnly = true)
@@ -25,4 +33,5 @@ public class UserService {
                 .map(user -> new UserResponse(user.getId(), user.getUsername()))
                 .collect(Collectors.toList());
     }
+
 }

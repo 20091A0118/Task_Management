@@ -3,6 +3,9 @@ package com.task.app.demo.service;
 import com.task.app.demo.dto.AuthRequest;
 import com.task.app.demo.dto.AuthResponse;
 import com.task.app.demo.dto.RegisterRequest;
+import com.task.app.demo.dto.UserResponse;
+import java.util.List;
+import java.util.stream.Collectors;
 import com.task.app.demo.entity.Role;
 import com.task.app.demo.entity.User;
 import com.task.app.demo.repository.UserRepository;
@@ -51,6 +54,13 @@ public class AuthService {
 
         userRepository.save(user);
         return "User registered successfully";
+    }
+
+    public List<UserResponse> getAdmins() {
+        return userRepository.findByRole(Role.ROLE_ADMIN)
+                .stream()
+                .map(user -> new UserResponse(user.getId(), user.getUsername()))
+                .collect(Collectors.toList());
     }
 
     public AuthResponse authenticate(AuthRequest request) {
